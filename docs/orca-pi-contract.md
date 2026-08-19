@@ -95,11 +95,48 @@ From **[PT-DOCS]/[PT-LOCAL]**:
 
 ### 4.1 Empirically captured stdin shapes (Phase 0 step 4)
 
-_Status: pending capture._ The prompt-text path for `pre_user_prompt` and
-the message path for `notification` are not documented; they are captured
-empirically and recorded here. The bridge jq programs and the fixtures in
-`bridge/test/` are written from these recorded shapes; a missing field
-degrades to an empty string, never to handler failure.
+Captured 2026-08-18 with a scratch **project-level** hooks file
+(`/tmp/pt-capture/work/.polytoken/hooks.json`) driving `polytoken exec` —
+the operator's global `~/.config/polytoken/hooks.json` was never touched
+(empty array, verified before and after). Project-level hooks load for
+runtime commands when the working dir contains `.polytoken/hooks.json`;
+the global file loads before any project file.
+
+Every payload carries `event` (event name) and `matcher_subject`
+(the matcher key: event name for lifecycle events, tool name for tool
+events), plus:
+
+| Event | Extra fields (exact observed shapes) |
+|---|---|
+| `session_start` | `session_id` |
+| `pre_user_prompt` | `prompt_id`, **`prompt`** (the prompt text — this is the undocumented path) |
+| `pre_model_turn` | `prompt_id` |
+| `pre_tool_use` | `prompt_id`, `tool_name`, `call_id`, **`input`** (object) |
+| `post_tool_use` | same as `pre_tool_use` |
+| `post_tool_use_failure` | same as `pre_tool_use` + `failure: {kind, error_message}` |
+| `stop` | `prompt_id` |
+| `notification` | see below |
+
+Example `pre_tool_use`:
+`{"event":"pre_tool_use","matcher_subject":"shell_exec","prompt_id":"…","tool_name":"shell_exec","call_id":"call_…","input":{"command":"echo hello-capture","timeout_seconds":30,"background":false,"name":"hello-capture"}}`
+
+**`notification` semantics (important correction to the original plan
+assumption):** Polytoken notifications are **harness events** —
+`job_complete`, `subagent_complete`, `hook_result`, `service_restart`,
+`service_failed`, `service_health_check_passed`, `extension_message`,
+`unknown` (daemon `NotificationType` schema, OpenAPI `Notification`:
+required `id`, `notification_type`, `source`, `summary`, `timestamp`;
+optional `detail`). They are queued and **drained into a model turn**
+(scheduler auto-drain), not permission prompts. No `notification` hook
+event fires in single-prompt `exec` mode, so the payload shape above is
+**inferred from the daemon schema + binary strings, not empirically
+captured**; the bridge reads the message from `.summary` (primary) with a
+fallback to the literal string `Polytoken needs attention`. Consequence
+for the bridge: `notification` → blocked is *not* a permission-prompt
+signal; it surfaces background-event attention (e.g. a finished job) as a
+blocked flash that the following drain turn overwrites with working.
+Blocked-state coverage for real interaction remains `ask_user_question`
+(pass-through). Verify chip behavior in the Phase 2 operator smoke.
 
 ## 5. Pi picker entry override mechanism
 
