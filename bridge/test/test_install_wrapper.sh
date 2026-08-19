@@ -188,10 +188,15 @@ if [ -n "$JQDIR" ]; then
         > "$H7/.config/polytoken/hooks.json"
     mkdir -p "$T/nojq"
     : > "$T/nojq/jq"; chmod 0644 "$T/nojq/jq"   # decoy: found by name, not executable
-    if PATH="$T/nojq:$BASE" command -v jq >/dev/null 2>&1; then
-        ok "skipped: jq found on BASE PATH; grep fallback untestable here"
+    # minimal PATH with just the tools the uninstaller needs — no jq anywhere
+    mkdir -p "$T/minpath"
+    for c in grep rm rmdir ls readlink cat; do
+        real=$(command -v "$c") && ln -sf "$real" "$T/minpath/$c"
+    done
+    if PATH="$T/minpath" command -v jq >/dev/null 2>&1; then
+        ok "skipped: minimal PATH still resolves jq; grep fallback untestable here"
     else
-        HOME="$H7" PATH="$T/nojq:$BASE" sh "$UNINST" > "$T/out" 2>&1
+        HOME="$H7" PATH="$T/minpath" sh "$UNINST" > "$T/out" 2>&1
         rc=$?
         if [ $rc != 0 ] && [ -e "$H7/.config/polytoken/orca-bridge/pi-polytoken" ]; then
             ok "uninstall refuses under v1 via grep fallback"
