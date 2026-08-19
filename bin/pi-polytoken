@@ -1,0 +1,90 @@
+#!/bin/sh
+# pi-polytoken — masquerade as the `pi` CLI for Orca's Pi agent entry.
+#
+# Orca launches the Pi TUI agent with a command line shaped like:
+#     pi [--yolo-family-flags...] [--session <session_file>]
+# Resume passes `--session <path>` where <path> is the transcript path we
+# reported via the session_start hook (…/polytoken/sessions/<id>/log.jsonl).
+#
+# Translation:
+#   --session <dir-or-dir/log.jsonl>   -> polytoken continue <id>
+#   anything else (or malformed value) -> polytoken new
+#
+# All other Pi flags have no Polytoken equivalent and are swallowed.
+# cwd and the full environment (including the ORCA_* pane vars) are
+# preserved via exec.
+#
+# argv is appended to ~/.config/polytoken/orca-bridge/pi-polytoken.argv.log
+# (best-effort, truncated when large) so real Orca invocations — including
+# the exact resume argv shape — can be recorded during smokes. stdin is
+# never logged.
+#
+# NOTE: no `set -u` here on purpose — macOS /bin/sh is bash 3.2, where
+# expanding an empty "$@" under `set -u` is a fatal unbound-variable error,
+# and this wrapper must tolerate a zero-argument invocation.
+
+argv_log() {
+    _dir="$HOME/.config/polytoken/orca-bridge"
+    _log="$_dir/pi-polytoken.argv.log"
+    [ -d "$_dir" ] || return 0
+    # keep the log bounded
+    if [ -f "$_log" ] && [ "$(wc -c < "$_log" 2>/dev/null || echo 0)" -gt 65536 ]; then
+        : > "$_log" 2>/dev/null || return 0
+    fi
+    {
+        printf '%s ' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf '[%s] ' "$0"
+        for a in "$@"; do printf '<%s> ' "$a"; done
+        printf '\n'
+    } >> "$_log" 2>/dev/null || return 0
+}
+
+# --- argument scan ---------------------------------------------------------
+SESSION_PATH=""
+
+prev=""
+for a in "$@"; do
+    if [ "$prev" = "--session" ]; then
+        SESSION_PATH="$a"
+        prev=""
+        continue
+    fi
+    case "$a" in
+        --session=*)
+            SESSION_PATH="${a#--session=}"
+            prev=""
+            ;;
+        *)
+            # swallow any other flag or positional (yolo-family flags etc.)
+            prev="$a"
+            ;;
+    esac
+done
+# a trailing dangling `--session` (no value) leaves SESSION_PATH empty -> new
+
+argv_log "$@" || true
+
+# --- derive session id -----------------------------------------------------
+# Accept .../<id>/log.jsonl or .../<id>; require a directory component so a
+# bare token is treated as malformed and falls back to `new`.
+SESSION_ID=""
+if [ -n "$SESSION_PATH" ]; then
+    p="$SESSION_PATH"
+    case "$p" in
+        */log.jsonl) p="${p%/log.jsonl}" ;;
+    esac
+    case "$p" in
+        */*)
+            id="${p##*/}"
+            case "$id" in
+                ""|"."|"..") id="" ;;
+            esac
+            SESSION_ID="$id"
+            ;;
+    esac
+fi
+
+if [ -n "$SESSION_ID" ]; then
+    exec polytoken continue "$SESSION_ID"
+fi
+exec polytoken new
