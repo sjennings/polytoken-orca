@@ -1,0 +1,37 @@
+[
+  {
+    "name": "orca-pi-bridge-session-start",
+    "event": "session_start",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  },
+  {
+    "name": "orca-pi-bridge-pre-user-prompt",
+    "event": "pre_user_prompt",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  },
+  {
+    "name": "orca-pi-bridge-pre-tool-use",
+    "event": "pre_tool_use",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  },
+  {
+    "name": "orca-pi-bridge-notification",
+    "event": "notification",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  },
+  {
+    "name": "orca-pi-bridge-post-tool-use",
+    "event": "post_tool_use",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  },
+  {
+    "name": "orca-pi-bridge-post-tool-use-failure",
+    "event": "post_tool_use_failure",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  },
+  {
+    "name": "orca-pi-bridge-stop",
+    "event": "stop",
+    "handler": { "bash": "\"$HOME\"/.config/polytoken/orca-bridge/orca-pi-hook.sh" }
+  }
+]
