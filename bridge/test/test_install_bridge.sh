@@ -118,6 +118,21 @@ else
 fi
 
 # =====================================================================
+# 4b. --path-shim-force shadows a foreign pi on PATH
+# =====================================================================
+H4b="$T/h4b"; mkdir -p "$H4b/otherbin"
+printf '#!/bin/sh\necho real-pi\n' > "$H4b/otherbin/pi"; chmod 0755 "$H4b/otherbin/pi"
+HOME="$H4b" PATH="$H4b/otherbin:$BASE" sh "$INST" --path-shim-force > /dev/null 2>&1
+rc=$?
+if [ $rc = 0 ] && [ -L "$H4b/.local/bin/pi" ] \
+   && [ "$(readlink "$H4b/.local/bin/pi")" = "$H4b/.config/polytoken/orca-bridge/pi-polytoken" ] \
+   && [ "$(managed_per_name "$H4b/.config/polytoken/hooks.json")" = "[1,1,1,1,1,1,1]" ]; then
+    ok "bridge --path-shim-force shadows foreign pi; install complete"
+else
+    bad "bridge force shim" "rc=$rc"
+fi
+
+# =====================================================================
 # 5. malformed existing hooks.json: fail non-zero, no partial writes
 # =====================================================================
 H4="$T/h4"; mkdir -p "$H4/.config/polytoken"

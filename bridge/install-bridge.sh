@@ -19,16 +19,19 @@
 set -eu
 
 usage() {
-    echo "usage: install-bridge.sh [--path-shim]" >&2
+    echo "usage: install-bridge.sh [--path-shim] [--path-shim-force]" >&2
     exit 2
 }
 
-if [ $# -gt 1 ]; then usage; fi
 PATH_SHIM=0
-if [ $# -eq 1 ]; then
-    if [ "$1" != "--path-shim" ]; then usage; fi
-    PATH_SHIM=1
-fi
+SHIM_FORCE=0
+for arg in "$@"; do
+    case "$arg" in
+        --path-shim) PATH_SHIM=1 ;;
+        --path-shim-force) PATH_SHIM=1; SHIM_FORCE=1 ;;
+        *) usage ;;
+    esac
+done
 
 SRC_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 WRAPPER_SRC="$SRC_DIR/../bin/pi-polytoken"
@@ -126,13 +129,17 @@ else
 fi
 
 if [ "$PATH_SHIM" = 1 ]; then
+    # A pre-existing shim that already points at the managed wrapper is fine
+    # (idempotent); anything else named `pi` at the shim path is a loud
+    # collision. --path-shim-force deliberately shadows a `pi` found
+    # elsewhere on PATH (the real binary stays invocable by absolute path).
     if [ -e "$SHIM" ] || [ -L "$SHIM" ]; then
         if [ "$(readlink "$SHIM" 2>/dev/null || true)" != "$DEST_WRAPPER" ]; then
             die "refusing to touch existing pi at $SHIM (not ours); resolve manually"
         fi
     else
-        if command -v pi >/dev/null 2>&1; then
-            die "another pi exists on PATH: $(command -v pi); refusing to shim"
+        if [ "$SHIM_FORCE" = 0 ] && command -v pi >/dev/null 2>&1; then
+            die "another pi exists on PATH: $(command -v pi); refusing to shim (use --path-shim-force to shadow it)"
         fi
     fi
 fi

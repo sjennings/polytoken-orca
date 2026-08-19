@@ -113,6 +113,29 @@ else
     bad "retargeted shim" "rc=$rc"
 fi
 
+# --- 5b. --path-shim-force shadows a foreign pi on PATH ----------------------
+H10="$T/home10"; mkdir -p "$H10/otherbin"
+printf '#!/bin/sh\necho real-pi\n' > "$H10/otherbin/pi"; chmod 0755 "$H10/otherbin/pi"
+HOME="$H10" PATH="$H10/otherbin:$BASE" sh "$INST" --path-shim-force > "$T/out" 2>&1
+rc=$?
+if [ $rc = 0 ] && [ -L "$H10/.local/bin/pi" ] \
+   && [ "$(readlink "$H10/.local/bin/pi")" = "$H10/.config/polytoken/orca-bridge/pi-polytoken" ] \
+   && [ "$(cat "$H10/otherbin/pi")" != "" ]; then
+    ok "--path-shim-force shadows foreign pi; real pi file untouched"
+else
+    bad "force shim" "rc=$rc shim=$(readlink "$H10/.local/bin/pi" 2>/dev/null)"
+fi
+# force must still refuse to clobber a foreign file at the shim path itself
+H10b="$T/home10b"; mkdir -p "$H10b/.local/bin"
+printf '#!/bin/sh\necho not-ours\n' > "$H10b/.local/bin/pi"; chmod 0755 "$H10b/.local/bin/pi"
+HOME="$H10b" PATH="$BASE" sh "$INST" --path-shim-force > "$T/out" 2>&1
+rc=$?
+if [ $rc != 0 ] && grep -q "not ours" "$T/out" && [ ! -e "$H10b/.config/polytoken/orca-bridge/pi-polytoken" ]; then
+    ok "force still refuses a foreign pi AT the shim path"
+else
+    bad "force clobber guard" "rc=$rc out=$(cat "$T/out")"
+fi
+
 # --- 6. commit failure: no pre-existing wrapper --------------------------------
 H4="$T/home4"; mkdir -p "$H4"
 rm -f "$T/mvcount"

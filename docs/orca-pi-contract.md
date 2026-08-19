@@ -140,15 +140,41 @@ Blocked-state coverage for real interaction remains `ask_user_question`
 
 ## 5. Pi picker entry override mechanism
 
-_Status: pending recon (Phase 0 step 2)._ Expected per Orca docs:
-Settings → Agents, per-agent custom launch command/args/env. Fallback:
-PATH shim at `~/.local/bin/pi`. Default flags Orca appends to Pi launches
-are captured with a temporary argv-logging wrapper and recorded here.
+Recon 2026-08-18 (operator's live `profiles/local-default/orca-data.json` +
+upstream `stablyai/orca` repo + onorca.dev docs):
+
+- Per-agent settings in `settings.`: `agentDefaultArgs.<agent>` (yolo-family
+  flag strings — e.g. claude `--dangerously-skip-permissions`, gemini
+  `--yolo`; **no `pi` entry set** on this machine) and
+  `agentDefaultEnv.<agent>` (only goose). No per-agent launch **command**
+  key exists in the live settings object. Upstream issue #6281 references
+  an internal `agentCmdOverrides[session.agent]`, suggesting the data model
+  supports command overrides, but no Settings surface for it was found.
+  ⇒ **Primary mechanism: PATH shim `~/.local/bin/pi` → installed wrapper**
+  (the machine already keeps `node`/`polytoken` in `~/.local/bin`, which
+  login shells put on PATH; Orca panes run the user's shell).
+- `settings.disabledTuiAgents` currently includes `pi` — the Pi entry must
+  be re-enabled in Settings → Agents before it appears in the picker.
+- `settings.agentStatusHooksEnabled` is already `true`.
+- Default flags Orca appends to Pi launches: to be captured empirically —
+  the wrapper appends every invocation's argv to
+  `~/.config/polytoken/orca-bridge/pi-polytoken.argv.log`.
 
 ## 6. Session-history panel scan (Phase 0 step 3)
 
-_Status: pending recon._ Needed only for the Phase 3 history decision;
-resume does not depend on it.
+Recon 2026-08-18 (upstream `stablyai/orca`): the session-history/AI-Vault
+panel uses **provider-specific scanners**; upstream issues (#9876, #5376)
+classify `pi` among "one file per session; trashing `filePath` is complete"
+providers — i.e. the Pi store is a set of session files (JSONL) and the
+panel lists them per file. The exact filesystem glob was NOT recoverable
+from public source (would need app.asar extraction or a clone). Resume
+identity, however, is pinned independently: `session_start`'s
+`session_file` becomes `providerSession.transcriptPath`, and
+`hook-provider-session-invalidation.ts` (+ its test, using `/pi/a.jsonl`)
+confirms transcriptPath is the durable provider-session identity. Decision
+for v2: **resume-only** (default); the history panel's Pi listing stays
+empty for Polytoken sessions unless the stretch stub item is later proven
+trivially safe — see README known limitations.
 
 ## 7. Smoke log
 
