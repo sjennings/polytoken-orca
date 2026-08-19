@@ -180,6 +180,21 @@ trivially safe — see README known limitations.
 
 | Version | Date | Orca app version | Result |
 |---|---|---|---|
-| v0 | — | — | pending |
-| v1 | — | — | pending |
-| v2 | — | — | pending |
+| v1 core (launch via shim + chip cycle) | 2026-08-18 | 1.4.184 | ✅ self-served via `orca` CLI, scratch worktree `bridge-smoke` (removed after): `terminal create --command 'pi'` in a login-shell pane → shim resolved → `polytoken new` (session `08x64j-crowd`); during a tool turn `worktree ps` showed `state: working` (worktree status `working`); after turn `state: done` |
+| v1 blocked state | 2026-08-18 | 1.4.184 | ✅ `ask_user_question` overlay in the live pane → `state: blocked`, worktree status `permission`; after answering (Enter on the overlay) → `state: done` |
+| v2 resume | 2026-08-18 | 1.4.184 | ✅ recorded real resume argv: `pi --session /Users/wire2k/.local/share/polytoken/sessions/08x64j-crowd/log.jsonl` → wrapper → `polytoken continue 08x64j-crowd` → same session, prior conversation (tool output + question + answer) present |
+| v0 picker entry (AC.2) | — | 1.4.184 pending | ⏳ operator: enable Pi (Settings → Agents; currently in `disabledTuiAgents`, CLI `--agent pi` refuses with "Selected agent is disabled"), launch from combobox, confirm TUI |
+| v2 Resume UI click (AC.6) | — | 1.4.184 pending | ⏳ operator: Resume after pane exit (argv shape already recorded/verified above) |
+
+Additional live findings (2026-08-18):
+
+- **Shim PATH resolution works in real Orca panes** both through a login
+  shell (`zsh -l` → `pi`) and with direct exec (`terminal create --command
+  'pi'`): argv log recorded `$0 = /Users/wire2k/.local/bin/pi` in both.
+- **Direct-exec caveat**: in a never-displayed (headless) worktree pane,
+  `polytoken new` failed its TUI cursor-position probe once
+  ("cursor position could not be read"); login-shell/visible panes were
+  unaffected. Suspect pane visibility rather than exec style.
+- Orca pane env in agent terminals includes the `ORCA_*` hook variables
+  (implied by the live chip transitions above — the hook's gating on
+  `ORCA_PANE_KEY` passed).
