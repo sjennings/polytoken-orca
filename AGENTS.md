@@ -28,7 +28,7 @@ fragment, tests, and docs.
 
 - **Tests**: run all suites before committing script changes —
   `for t in bridge/test/test_*.sh; do sh "$t" || exit 1; done`
-  (63 assertions total). Failure-injection tests PATH-override `mv`; keep
+  (71 assertions total). Failure-injection tests PATH-override `mv`/`ln`; keep
   installers calling plain `mv`/`cp`/`rm` by name so injection keeps
   working.
 - **POSIX sh, macOS-first**: scripts run under `/bin/sh` = bash 3.2. No

@@ -136,7 +136,9 @@ for the bridge: `notification` → blocked is *not* a permission-prompt
 signal; it surfaces background-event attention (e.g. a finished job) as a
 blocked flash that the following drain turn overwrites with working.
 Blocked-state coverage for real interaction remains `ask_user_question`
-(pass-through). Verify chip behavior in the Phase 2 operator smoke.
+(pass-through). Chip behavior (working/blocked/done) was verified live
+against production Orca on 2026-08-18 (§9); the picker-entry smoke with an
+operator-visible chip remains the final witness.
 
 ## 5. Pi picker entry override mechanism
 
@@ -156,9 +158,11 @@ upstream `stablyai/orca` repo + onorca.dev docs):
 - `settings.disabledTuiAgents` currently includes `pi` — the Pi entry must
   be re-enabled in Settings → Agents before it appears in the picker.
 - `settings.agentStatusHooksEnabled` is already `true`.
-- Default flags Orca appends to Pi launches: to be captured empirically —
-  the wrapper appends every invocation's argv to
-  `~/.config/polytoken/orca-bridge/pi-polytoken.argv.log`.
+- Default flags Orca appends to Pi launches: the argv log recorded two
+  real invocations so far — a bare `pi` (no flags; via `terminal create
+  --command` / login shell) and the resume form
+  `pi --session <path>/log.jsonl`. Orca's picker-entry launch flags (if
+  any) get recorded automatically at the operator smoke.
 
 ## 6. Session-history panel scan (Phase 0 step 3)
 

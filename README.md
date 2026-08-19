@@ -85,7 +85,7 @@ sh bridge/install-wrapper.sh [--path-shim | --path-shim-force]
 
 ## Verification status
 
-All logic is covered by 63 shell tests runnable anywhere
+All logic is covered by 71 shell tests runnable anywhere
 (`sh bridge/test/test_*.sh` — no Orca needed). Against **production Orca
 1.4.184** (2026-08-18, self-served via `orca` CLI in a scratch worktree):
 
@@ -98,6 +98,35 @@ All logic is covered by 63 shell tests runnable anywhere
 | Resume: `pi --session …/log.jsonl` → `polytoken continue <id>`, same session + prior conversation | ✅ verified live |
 | Launch from the **Pi picker entry** (AC.2) | ⏳ operator: enable Pi in Settings, click the entry |
 | Orca **Resume UI click** (vs. the recorded argv shape, already proven) | ⏳ operator |
+
+## Operator finish line (everything else is done)
+
+The bridge is installed and live-verified (see above). Remaining steps are
+operator-owned by design (production-app Settings + final acceptance
+witness):
+
+1. **Orca → Settings → Agents: enable Pi** (currently disabled; `--agent pi`
+   CLI launches are refused until then).
+2. **Picker smoke (AC.2)**: open any worktree, pick **Pi** from the agent
+   combobox → the Polytoken TUI must start there. Watch the chip:
+   `working` during a turn, `blocked` (worktree shows "permission") when
+   you answer a question, `done` at rest. The exact launch argv is
+   recorded automatically in
+   `~/.config/polytoken/orca-bridge/pi-polytoken.argv.log`.
+3. **Resume smoke (AC.6)**: exit the pane (Ctrl-C or /quit), then use
+   Orca's **Resume** → the same session must come back (same session id,
+   prior conversation visible).
+4. **Tag the versions** (run in this repo):
+   ```sh
+   git tag -a v0 -m "v0: Pi entry launches Polytoken (operator smoke <date>, Orca <version>)"
+   git tag -a v1 -m "v1: live status chips via Pi-dialect bridge (operator smoke <date>, Orca <version>)"
+   git tag -a v2 -m "v2: resume into same session (operator smoke <date>, Orca <version>)"
+   ```
+5. Update `docs/orca-pi-contract.md` §9 smoke log rows for the picker and
+   Resume-UI entries (Orca version visible in Settings → About).
+
+If anything misbehaves: `sh bridge/test/test_orca_pi_hook.sh` re-validates
+the dialect against pinned fixtures; uninstall is one command (below).
 
 ## Known limitations
 
