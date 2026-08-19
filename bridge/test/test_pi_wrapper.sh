@@ -18,7 +18,8 @@ trap 'rm -rf "$T"' EXIT HUP INT TERM
 mkdir -p "$T/stub" "$T/home"
 cat > "$T/stub/polytoken" <<EOF
 #!/bin/sh
-printf '%s\n' "\$*" >> "$T/argv.txt"
+printf '%s\n' "\$#" >> "$T/argv.txt"
+for a in "\$@"; do printf '%s\n' "\$a" >> "$T/argv.txt"; done
 EOF
 chmod 0755 "$T/stub/polytoken"
 
@@ -27,22 +28,40 @@ run_wrapper() {
     HOME="$T/home" PATH="$T/stub:/bin:/usr/bin" "$WRAPPER" "$@" >/dev/null 2>&1
 }
 
-# last argv line as a single string
+# recorded argv as "argc|joined-args" — argc proves argument boundaries
 recorded() {
     [ -f "$T/argv.txt" ] || { echo "(no recording)"; return; }
-    tail -n 1 "$T/argv.txt"
+    argc=$(sed -n '1p' "$T/argv.txt")
+    joined=$(awk 'NR>1' "$T/argv.txt" | tr '\n' ' ' | sed 's/ $//')
+    printf '%s|%s' "$argc" "$joined"
 }
 
 assert_args() {
     desc=$1
     expected=$2
+    expected_argc=$(printf '%s\n' "$expected" | wc -w | tr -d ' ')
     shift 2
     run_wrapper "$@"
     got=$(recorded)
-    if [ "$got" = "$expected" ]; then
+    if [ "$got" = "$expected_argc|$expected" ]; then
         PASS=$((PASS + 1)); echo "ok   - $desc"
     else
-        FAIL=$((FAIL + 1)); echo "FAIL - $desc: expected [$expected] got [$got]"
+        FAIL=$((FAIL + 1)); echo "FAIL - $desc: expected [$expected_argc|$expected] got [$got]"
+    fi
+}
+
+# assert exact argument boundaries (argc + per-arg lines) for tricky values
+assert_exact() {
+    desc=$1
+    expected_argc=$2
+    expected=$3
+    shift 3
+    run_wrapper "$@"
+    got=$(recorded)
+    if [ "$got" = "$expected_argc|$expected" ]; then
+        PASS=$((PASS + 1)); echo "ok   - $desc"
+    else
+        FAIL=$((FAIL + 1)); echo "FAIL - $desc: expected [$expected_argc|$expected] got [$got]"
     fi
 }
 
@@ -55,7 +74,7 @@ assert_args "resume via --session dir"                "continue abc-123" \
 assert_args "unknown flags swallowed -> new"          "new" --yolo --whatever
 assert_args "resume via --session=path"               "continue xyz" \
     "--session=/Users/x/.local/share/polytoken/sessions/xyz/log.jsonl"
-assert_args "session path with spaces"                "continue my id" \
+assert_exact "session path with spaces (boundary-proof)" "2" "continue my id" \
     --session "/Users/x/.local/share/polytoken/sessions/my id/log.jsonl"
 assert_args "dangling --session -> new"               "new" --session
 assert_args "--session / (empty basename) -> new"     "new" --session "/"
@@ -85,6 +104,18 @@ if [ -e "$T/home2/.config" ]; then
     FAIL=$((FAIL + 1)); echo "FAIL - wrapper created .config without orca-bridge dir"
 else
     PASS=$((PASS + 1)); echo "ok   - no stray dirs when orca-bridge absent"
+fi
+
+# argv log: created owner-only (0600), control chars sanitized
+rm -rf "$T/home3"; mkdir -p "$T/home3/.config/polytoken/orca-bridge"
+HOME="$T/home3" PATH="$T/stub:/bin:/usr/bin" "$WRAPPER" "$(printf 'a<tab>b\nc')" >/dev/null 2>&1
+LOG3="$T/home3/.config/polytoken/orca-bridge/pi-polytoken.argv.log"
+mode3=$(ls -l "$LOG3" 2>/dev/null | cut -c 1-10)
+lines3=$(grep -c '' "$LOG3" 2>/dev/null || echo 0)
+if [ "$mode3" = "-rw-------" ] && [ "$lines3" = 1 ]; then
+    PASS=$((PASS + 1)); echo "ok   - argv log is 0600 and control chars sanitized (single line)"
+else
+    FAIL=$((FAIL + 1)); echo "FAIL - argv log hygiene: mode=$mode3 lines=$lines3"
 fi
 
 echo "----"

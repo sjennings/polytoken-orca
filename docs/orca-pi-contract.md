@@ -176,7 +176,43 @@ for v2: **resume-only** (default); the history panel's Pi listing stays
 empty for Polytoken sessions unless the stretch stub item is later proven
 trivially safe — see README known limitations.
 
-## 7. Smoke log
+## 8. Security review dispositions (2026-08-18)
+
+An adversarial review pass over the wrapper/bridge/installers produced a
+FIX-FIRST verdict; findings and dispositions:
+
+**Fixed (covered by new tests, 71 assertions total):**
+- xtrace (`sh -x`) could trace token expansions → `set +x` now precedes
+  endpoint sourcing (test asserts no token in `sh -x` output).
+- Standalone installer could leave a committed wrapper on shim failure →
+  post-commit rollback now restores prior wrapper byte+mode or removes a
+  fresh one (ln-failure injection tests).
+- Bridge uninstall was not transactional after the hooks.json commit →
+  reworked: owned files are renamed aside (same filesystem), hooks.json
+  commits LAST, any pre-commit failure restores everything including our
+  shim (mv-failure injection at the commit ordinal).
+- Malformed-but-parseable hooks arrays (e.g. a scalar element) collapsed
+  jq errors to "no managed entries" → both uninstallers now fail closed on
+  any non-`{name: string}` element and refuse to mutate.
+- Unbounded stdin → hook caps stdin at 256 KiB (`head -c`); oversized
+  payloads degrade to silent exit 0.
+- Uninstall staged in TMPDIR (cross-fs mv) → stages beside hooks.json.
+- Signal + EXIT traps ran rollback twice → traps reset on rollback entry.
+- Wrapper argv log: now created mode 0600 with control chars stripped
+  (single-line records; boundary-proving stub records argc + per-arg).
+
+**Rebutted (pinned-contract constraints, documented residual risks):**
+- "Do not source the endpoint file": sourcing is byte-for-byte Orca's own
+  claude-hook.sh transport (§1); the file is Orca-owned trusted input.
+  Parsing it as data would deviate from the pinned contract.
+- "Token visible in curl argv during ≤1.5 s": identical to Orca's own
+  transport; a same-user observer can read the endpoint file itself, and
+  the pinned contract fixes the mechanism. No `curl -v` anywhere.
+- "Make argv logging opt-in": default-on argv capture is a design
+  requirement (it recorded the real launch and resume argv shapes in §7);
+  mitigated to 0600 + sanitization instead.
+
+## 9. Smoke log
 
 | Version | Date | Orca app version | Result |
 |---|---|---|---|

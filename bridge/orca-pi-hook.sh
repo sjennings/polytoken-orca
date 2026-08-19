@@ -21,14 +21,25 @@
 #   stop                  -> agent_end (=> done)
 #   anything else         -> no request
 #
-# Security: ORCA_AGENT_HOOK_TOKEN is only ever passed to curl; it is never
-# logged, echoed, or written anywhere.
+# Security: ORCA_AGENT_HOOK_TOKEN is only ever passed to curl (as Orca's
+# own claude-hook.sh does — pinned transport); it is never logged, echoed,
+# or written anywhere.
+#
+# NOTE: stdin is capped at 256 KiB (head -c) — oversized tool inputs parse
+# as invalid JSON and degrade to a silent exit 0 rather than burning the
+# hook deadline.
 
-payload=$(cat)
+payload=$(head -c 262144)
 if [ -z "$payload" ]; then
   exit 0
 fi
 
+# Disable xtrace BEFORE sourcing so neither the endpoint's own assignment
+# lines nor any later expansion of the token can be traced by a debugging
+# shell (`sh -x`). The endpoint file is owned and written by Orca (same
+# trust model as Orca's own claude-hook.sh, which sources it identically —
+# pinned contract, docs/orca-pi-contract.md §1).
+{ set +x; } 2>/dev/null || :
 if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then
   . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :
 fi

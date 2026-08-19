@@ -42,13 +42,19 @@ die() { echo "install-wrapper: $*" >&2; exit 1; }
 # state used by the rollback trap; safe defaults before anything can fail
 STAGE=""
 HAVEDest=0
+COMMITTED_DEST=0
 CREATED_BRIDGE_DIR=0
 
 rollback() {
     status=$?
+    trap - EXIT HUP INT TERM   # never run twice (signal + exit)
     if [ -n "$STAGE" ] && [ -d "$STAGE" ]; then
-        if [ "$HAVEDest" = 1 ] && [ -f "$STAGE/backup" ] && [ ! -e "$DEST" ]; then
+        if [ "$HAVEDest" = 1 ] && [ -f "$STAGE/backup" ]; then
+            # restore prior wrapper byte+mode identical, even over a
+            # freshly committed one
             cp -p "$STAGE/backup" "$DEST" 2>/dev/null || true
+        elif [ "$COMMITTED_DEST" = 1 ] && [ ! "$HAVEDest" = 1 ] && [ -e "$DEST" ]; then
+            rm -f "$DEST" 2>/dev/null || true
         fi
         rm -rf "$STAGE" 2>/dev/null || true
     fi
@@ -102,11 +108,11 @@ if ! mv "$STAGE/pi-polytoken" "$DEST"; then
     echo "install-wrapper: commit of wrapper failed; rolling back" >&2
     exit 1
 fi
+COMMITTED_DEST=1
 
 if [ "$PATH_SHIM" = 1 ]; then
-    mkdir -p "$SHIM_DIR"
-    if ! ln -sfn "$DEST" "$SHIM"; then
-        echo "install-wrapper: wrapper installed but PATH shim creation failed at $SHIM" >&2
+    if ! mkdir -p "$SHIM_DIR" || ! ln -sfn "$DEST" "$SHIM"; then
+        echo "install-wrapper: PATH shim creation failed at $SHIM; rolling back" >&2
         exit 1
     fi
 fi

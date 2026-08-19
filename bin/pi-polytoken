@@ -31,12 +31,16 @@ argv_log() {
     if [ -f "$_log" ] && [ "$(wc -c < "$_log" 2>/dev/null || echo 0)" -gt 65536 ]; then
         : > "$_log" 2>/dev/null || return 0
     fi
+    # create with 0600 (owner-only) when it does not exist yet
+    if [ ! -f "$_log" ]; then
+        (umask 077 && : > "$_log") 2>/dev/null || return 0
+    fi
     {
         printf '%s ' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         printf '[%s] ' "$0"
         for a in "$@"; do printf '<%s> ' "$a"; done
         printf '\n'
-    } >> "$_log" 2>/dev/null || return 0
+    } 2>/dev/null | tr -d '\000-\037\177' >> "$_log" 2>/dev/null || return 0
 }
 
 # --- argument scan ---------------------------------------------------------

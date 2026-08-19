@@ -27,9 +27,17 @@ fi
 if [ -r "$HOOKS" ]; then
     bridge_entries=0
     if command -v jq >/dev/null 2>&1; then
+        # fail closed on malformed config: array of {name: string} or abort
+        if ! jq -e 'type == "array" and all(.[]; type == "object" and ((.name // null) | type == "string"))' \
+                "$HOOKS" >/dev/null 2>&1; then
+            die "hooks.json is malformed (not an array of {name: string} entries); refusing to mutate: $HOOKS"
+        fi
         for n in $MANAGED_NAMES; do
-            count=$(jq --arg n "$n" '[.[]? | select(.name == $n)] | length' "$HOOKS" 2>/dev/null || echo 0)
-            [ "${count:-0}" -gt 0 ] 2>/dev/null && bridge_entries=1 && break
+            count=$(jq --arg n "$n" '[.[]? | select(.name == $n)] | length' "$HOOKS" 2>/dev/null || echo error)
+            if [ "$count" = error ]; then
+                die "failed to analyze hooks.json (jq error); refusing to mutate"
+            fi
+            if [ "${count:-0}" -gt 0 ] 2>/dev/null; then bridge_entries=1; break; fi
         done
     else
         for n in $MANAGED_NAMES; do

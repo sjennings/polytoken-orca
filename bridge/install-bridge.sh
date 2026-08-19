@@ -65,6 +65,7 @@ HAD_HOOKS=0
 
 rollback() {
     status=$?
+    trap - EXIT HUP INT TERM   # never run twice (signal + exit)
     # restore pre-existing files from backups (byte+mode identical), remove
     # files we committed that did not exist before
     if [ -n "$STAGE" ] && [ -d "$STAGE" ]; then
@@ -197,9 +198,8 @@ fi
 COMMITTED_HOOKS=1
 
 if [ "$PATH_SHIM" = 1 ]; then
-    mkdir -p "$SHIM_DIR"
-    if ! ln -sfn "$DEST_WRAPPER" "$SHIM"; then
-        echo "install-bridge: bridge installed but PATH shim creation failed at $SHIM" >&2
+    if ! mkdir -p "$SHIM_DIR" || ! ln -sfn "$DEST_WRAPPER" "$SHIM"; then
+        echo "install-bridge: PATH shim creation failed at $SHIM; rolling back" >&2
         exit 1
     fi
     SHIM_CREATED=1

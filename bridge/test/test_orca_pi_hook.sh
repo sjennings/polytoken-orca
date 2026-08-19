@@ -211,6 +211,31 @@ else
     bad "no endpoint" "rc=$rc"
 fi
 
+# oversized payload (>256 KiB cap) -> silent exit 0, no request
+before=$(req_count)
+awk 'BEGIN { s = "{\"event\":\"pre_tool_use\",\"tool_name\":\"t\",\"input\":{\"blob\":\""; for (i = 0; i < 300000; i++) s = s "x"; s = s "\"}}" ; printf "%s", s }' > "$FIX"
+sz=$(wc -c < "$FIX" | tr -d ' ')
+[ "$sz" -gt 262144 ] || { echo "fixture generation failed ($sz bytes)"; exit 1; }
+run_hook "$FIX"; rc=$?
+if [ $rc = 0 ] && [ "$(req_count)" = "$before" ]; then
+    ok "oversized payload ($sz bytes) -> exit 0, no request"
+else
+    bad "oversized payload" "rc=$rc"
+fi
+
+# xtrace must never leak the token into stderr
+printf '%s' '{"event":"stop"}' > "$FIX"
+before=$(req_count)
+env HOME="$H" PATH="$PATH" ORCA_AGENT_HOOK_ENDPOINT="$EP" \
+    ORCA_PANE_KEY=pk-1 ORCA_TAB_ID=tb-2 ORCA_AGENT_LAUNCH_TOKEN=lt-3 \
+    ORCA_WORKTREE_ID=wt-4 sh -x "$HOOK" < "$FIX" > "$T/xtrace.out" 2> "$T/xtrace.err"
+rc=$?
+if ! grep -q "$TOKEN" "$T/xtrace.err" && ! grep -q "$TOKEN" "$T/xtrace.out"; then
+    ok "sh -x invocation never leaks the token"
+else
+    bad "xtrace token leak" "token visible in output"
+fi
+
 # listener down: point at a port nothing listens on
 kill "$SRV_PID" 2>/dev/null; wait "$SRV_PID" 2>/dev/null; SRV_PID=""
 DEAD_EP="$T/endpoint-dead.env"

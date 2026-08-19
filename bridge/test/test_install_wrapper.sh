@@ -54,6 +54,23 @@ exec "$MV_REAL" "\$@"
 EOF
 chmod 0755 "$T/bin/mv"
 
+# fake ln (failure injection for post-commit shim failures)
+LN_REAL=$(command -v ln)
+cat > "$T/bin/ln" <<EOF
+#!/bin/sh
+if [ -n "\$FAKE_LN_FAIL_AT" ] && [ -n "\$FAKE_LN_COUNT_FILE" ]; then
+    n=\$(cat "\$FAKE_LN_COUNT_FILE" 2>/dev/null || echo 0)
+    n=\$((n + 1))
+    echo "\$n" > "\$FAKE_LN_COUNT_FILE"
+    if [ "\$n" = "\$FAKE_LN_FAIL_AT" ]; then
+        echo "fake-ln: injected failure #\$n" >&2
+        exit 1
+    fi
+fi
+exec "$LN_REAL" "\$@"
+EOF
+chmod 0755 "$T/bin/ln"
+
 CONF="$H/.config/polytoken"
 BRIDGE_DIR="$CONF/orca-bridge"
 DEST="$BRIDGE_DIR/pi-polytoken"
@@ -163,6 +180,34 @@ if [ $rc != 0 ] && [ "$(cat "$DEST")" = "OLD-WRAPPER" ] && [ "$(mode_of "$DEST")
     ok "commit failure with prior install: restored byte+mode identical"
 else
     bad "commit failure with prior install" "rc=$rc content=$(cat "$DEST" 2>/dev/null) mode=$(mode_of "$DEST")"
+fi
+
+# --- 7b. shim (ln) failure AFTER wrapper commit -> full rollback ---------------
+H4b="$T/home4b"; mkdir -p "$H4b"
+rm -f "$T/lncount"
+FAKE_LN_FAIL_AT=1 FAKE_LN_COUNT_FILE="$T/lncount" HOME="$H4b" PATH="$T/bin:$BASE" \
+    sh "$INST" --path-shim > "$T/out" 2>&1
+rc=$?
+if [ $rc != 0 ] && [ ! -e "$H4b/.config/polytoken/orca-bridge/pi-polytoken" ] \
+   && [ ! -e "$H4b/.local/bin/pi" ] && grep -q "rolling back" "$T/out"; then
+    ok "shim failure after commit (fresh): wrapper rolled back, no shim"
+else
+    bad "shim failure fresh" "rc=$rc dest=$([ -e "$H4b/.config/polytoken/orca-bridge/pi-polytoken" ] && echo present)"
+fi
+# upgrade variant: pre-existing wrapper restored byte+mode
+H4c="$T/home4c"; mkdir -p "$H4c"
+HOME="$H4c" PATH="$BASE" sh "$INST" > /dev/null 2>&1 || { echo "setup failed"; exit 1; }
+W4c="$H4c/.config/polytoken/orca-bridge/pi-polytoken"
+printf 'OLD2\n' > "$W4c"; chmod 0711 "$W4c"
+rm -f "$T/lncount"
+FAKE_LN_FAIL_AT=1 FAKE_LN_COUNT_FILE="$T/lncount" HOME="$H4c" PATH="$T/bin:$BASE" \
+    sh "$INST" --path-shim > /dev/null 2>&1
+rc=$?
+if [ $rc != 0 ] && [ "$(cat "$W4c")" = "OLD2" ] && [ "$(mode_of "$W4c")" = "-rwx--x--x" ] \
+   && [ ! -e "$H4c/.local/bin/pi" ]; then
+    ok "shim failure after commit (upgrade): prior wrapper restored byte+mode"
+else
+    bad "shim failure upgrade" "rc=$rc mode=$(mode_of "$W4c")"
 fi
 
 # --- 8. uninstall removes wrapper + shim-ours + dir -----------------------------

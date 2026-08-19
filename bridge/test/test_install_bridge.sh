@@ -39,6 +39,23 @@ exec "$MV_REAL" "\$@"
 EOF
 chmod 0755 "$T/bin/mv"
 
+# fake ln (failure injection for post-commit shim failures)
+LN_REAL=$(command -v ln)
+cat > "$T/bin/ln" <<EOF
+#!/bin/sh
+if [ -n "\$FAKE_LN_FAIL_AT" ] && [ -n "\$FAKE_LN_COUNT_FILE" ]; then
+    n=\$(cat "\$FAKE_LN_COUNT_FILE" 2>/dev/null || echo 0)
+    n=\$((n + 1))
+    echo "\$n" > "\$FAKE_LN_COUNT_FILE"
+    if [ "\$n" = "\$FAKE_LN_FAIL_AT" ]; then
+        echo "fake-ln: injected failure #\$n" >&2
+        exit 1
+    fi
+fi
+exec "$LN_REAL" "\$@"
+EOF
+chmod 0755 "$T/bin/ln"
+
 MANAGED_COUNT_EXPR='["orca-pi-bridge-session-start","orca-pi-bridge-pre-user-prompt","orca-pi-bridge-pre-tool-use","orca-pi-bridge-notification","orca-pi-bridge-post-tool-use","orca-pi-bridge-post-tool-use-failure","orca-pi-bridge-stop"] as $m | [ $m[] | . as $n | [ .[] | select(.name == $n) ] | length ]'
 
 managed_per_name() { # hooks-file -> prints 7 counts
@@ -200,6 +217,21 @@ else
 fi
 
 # =====================================================================
+# 7b. shim (ln) failure AFTER all commits -> full rollback
+# =====================================================================
+rm -f "$T/lncount"
+FAKE_LN_FAIL_AT=1 FAKE_LN_COUNT_FILE="$T/lncount" HOME="$H5" \
+    PATH="$T/bin:$BASE" sh "$INST" --path-shim > "$T/out" 2>&1
+rc=$?
+if [ $rc != 0 ] && cmp -s "$J5" "$T/orig5.json" \
+   && [ "$(cat "$W5")" = "OLD-WRAPPER" ] && [ "$(cat "$K5")" = "OLD-HOOK" ] \
+   && [ ! -e "$H5/.local/bin/pi" ] && grep -q "rolling back" "$T/out"; then
+    ok "shim failure after commits: hooks.json + prior scripts fully restored"
+else
+    bad "bridge shim failure rollback" "rc=$rc w=$(cat "$W5" 2>/dev/null | head -c 20) k=$(cat "$K5" 2>/dev/null | head -c 20)"
+fi
+
+# =====================================================================
 # 8. uninstall: only exact managed names removed, scripts gone, shim ours
 # =====================================================================
 HOME="$H5" PATH="$BASE" sh "$INST" --path-shim > /dev/null 2>&1 || { echo "setup install failed"; exit 1; }
@@ -269,6 +301,37 @@ if [ $rc != 0 ] && cmp -s "$J9" "$T/orig9.json" \
     ok "uninstaller mv failure: config byte-identical, scripts untouched"
 else
     bad "uninstaller injection" "rc=$rc"
+fi
+
+# --- 11b. uninstaller: fail the hooks.json commit after renames -> full restore ---
+rm -f "$T/mvcount"
+FAKE_MV_FAIL_AT=3 FAKE_MV_COUNT_FILE="$T/mvcount" HOME="$H9" \
+    PATH="$T/bin:$BASE" sh "$UNINST" > "$T/out" 2>&1
+rc=$?
+leftovers9=$(ls -A "$H9/.config/polytoken" 2>/dev/null | grep -c '^\.uninstall-bridge' || true)
+if [ $rc != 0 ] && cmp -s "$J9" "$T/orig9.json" \
+   && cmp -s "$H9/.config/polytoken/orca-bridge/pi-polytoken" "$WRAP_SRC" \
+   && cmp -s "$H9/.config/polytoken/orca-bridge/orca-pi-hook.sh" "$HOOK_SRC" \
+   && [ "${leftovers9:-0}" = 0 ]; then
+    ok "uninstaller hooks-commit failure: renamed scripts restored, config intact"
+else
+    bad "uninstaller hooks-commit rollback" "rc=$rc leftovers=${leftovers9:-?}"
+fi
+
+# --- 11c. uninstaller fails closed on malformed array elements --------------------
+H11="$T/h11"; mkdir -p "$H11"
+HOME="$H11" PATH="$BASE" sh "$INST" > /dev/null 2>&1 || { echo "setup failed"; exit 1; }
+J11="$H11/.config/polytoken/hooks.json"
+printf '["scalar-before", %s]\n' "$(cat "$J11" | jq -c '.[0]')" > "$T/malformed.json"
+cp "$T/malformed.json" "$J11"
+HOME="$H11" PATH="$BASE" sh "$UNINST" > "$T/out" 2>&1
+rc=$?
+if [ $rc != 0 ] && cmp -s "$J11" "$T/malformed.json" \
+   && [ -e "$H11/.config/polytoken/orca-bridge/pi-polytoken" ] \
+   && grep -q "malformed" "$T/out"; then
+    ok "uninstaller refuses malformed array without mutation (fail closed)"
+else
+    bad "malformed refusal" "rc=$rc out=$(head -c 120 "$T/out")"
 fi
 
 # =====================================================================
