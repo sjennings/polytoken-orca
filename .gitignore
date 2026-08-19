@@ -1,0 +1,4 @@
+# OS / toolchain
+.DS_Store
+*.log
+tmp/
