@@ -51,9 +51,10 @@ fragment, tests, and docs.
 - v0 (launch) / v1 (status) / v2 (resume): mechanisms re-verified against
   production Orca **1.4.205** on 2026-09-18 via `orca` CLI (see README
   "Verification status" and `docs/orca-pi-contract.md` §7; originally
-  verified against 1.4.184 on 2026-08-18); git tags land after the
-  operator picker-entry smoke (enable Pi in Settings → Agents, then launch
-  from the combobox).
+  verified against 1.4.184 on 2026-08-18). Tags v0/v1/v2 landed
+  2026-09-18: the operator accepted the CLI verification as the smoke
+  witness; AC.2's combobox path was not separately exercised (Pi remains
+  disabled in Settings → Agents).
 
 ## Orca 1.4.205 notes (2026-09-18)
 

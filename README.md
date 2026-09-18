@@ -98,8 +98,12 @@ see `docs/orca-pi-contract.md` §7 for what changed between versions):
 | Chip cycle `working → done` during a real turn | ✅ verified live (1.4.184 + 1.4.205) |
 | Chip `blocked` on `ask_user_question` overlay | ✅ verified live (1.4.184 + 1.4.205; answering the overlay needs the GUI — terminal-sent keystrokes are ignored) |
 | Resume: `pi --session <log.jsonl>` → `polytoken continue <id>`, same session + prior conversation | ✅ verified live (1.4.184 + 1.4.205, `sessions-v1` paths) |
-| Launch from the **Pi picker entry** (AC.2) | ⏳ operator: enable Pi in Settings, click the entry |
-| Orca **Resume UI click** (vs. the recorded argv shape, already proven) | ⏳ operator |
+| Launch from the **Pi picker entry** (AC.2) | ✅ delegated — operator accepted the CLI verification as witness (2026-09-18); the combobox path itself was not exercised (Pi remains disabled in Settings → Agents) |
+| Orca **Resume UI click** (vs. the recorded argv shape, already proven) | ✅ delegated — same basis; the `pi --session` relaunch itself was verified live in a real Orca pane |
+
+> Witness decision (2026-09-18): the operator judged the orca-CLI
+> verification sufficient for v0/v1/v2; the tags are cut on that basis.
+> The two UI interactions above remain available as optional extras.
 
 Note: Orca 1.4.205 has **no native Polytoken agent** (the `polytoken`
 hook files some tools install under `~/.orca/agent-hooks/` belong to an
@@ -107,11 +111,13 @@ unreleased upstream PR and their `/hook/polytoken` route 404s on 1.4.205).
 The Pi masquerade remains the only working integration — details in
 `docs/orca-pi-contract.md` §7.2.
 
-## Operator finish line (everything else is done)
+## Operator finish line (RESOLVED 2026-09-18)
 
-The bridge is installed and live-verified (see above). Remaining steps are
-operator-owned by design (production-app Settings + final acceptance
-witness):
+The operator accepted the orca-CLI verification as the smoke witness for
+all three milestones; v0/v1/v2 are tagged on that basis (2026-09-18, Orca
+1.4.205). Note AC.2's combobox launch path itself was never exercised —
+Pi is still in `disabledTuiAgents` — so if you ever enable Pi and want
+the UI witnessed too:
 
 1. **Orca → Settings → Agents: enable Pi** (currently disabled; `--agent pi`
    CLI launches are refused until then).
@@ -124,14 +130,6 @@ witness):
 3. **Resume smoke (AC.6)**: exit the pane (Ctrl-C or /quit), then use
    Orca's **Resume** → the same session must come back (same session id,
    prior conversation visible).
-4. **Tag the versions** (run in this repo):
-   ```sh
-   git tag -a v0 -m "v0: Pi entry launches Polytoken (operator smoke <date>, Orca <version>)"
-   git tag -a v1 -m "v1: live status chips via Pi-dialect bridge (operator smoke <date>, Orca <version>)"
-   git tag -a v2 -m "v2: resume into same session (operator smoke <date>, Orca <version>)"
-   ```
-5. Update `docs/orca-pi-contract.md` §9 smoke log rows for the picker and
-   Resume-UI entries (Orca version visible in Settings → About).
 
 If anything misbehaves: `sh bridge/test/test_orca_pi_hook.sh` re-validates
 the dialect against pinned fixtures; uninstall is one command (below).

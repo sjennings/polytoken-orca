@@ -300,8 +300,8 @@ FIX-FIRST verdict; findings and dispositions:
 | v1 core re-check (launch + chip cycle) | 2026-09-18 | 1.4.205 | ✅ self-served via `orca` CLI, scratch worktree `bridge-smoke-1420` (removed after): `terminal create --command 'pi'` → shim resolved (argv log `$0 = ~/.local/bin/pi`) → `polytoken new`; worktree `ps` showed the agent registered (`agentType: pi`, sent prompt recorded) and `state: done` after the turn |
 | v1 blocked state re-check | 2026-09-18 | 1.4.205 | ✅ `ask_user_question` in the pane → `state: blocked`, `toolName: ask_user_question`. (Answering the overlay from the CLI was not possible — the overlay ignores pasted/terminal-sent keystrokes; same operator-GUI behavior as before, see README known limitations) |
 | v2 resume re-check | 2026-09-18 | 1.4.205 | ✅ `pi --session …/sessions-v1/0bccpb-slug/log.jsonl` → `polytoken continue 0bccpb-slug` → same session id; prior conversation present (the resumed agent recalled the earlier exchange and the pending question) |
-| v0 picker entry (AC.2) | — | 1.4.205 pending | ⏳ operator: enable Pi (Settings → Agents; currently in `disabledTuiAgents`, CLI `--agent pi` refuses with "Selected agent is disabled"), launch from combobox, confirm TUI |
-| v2 Resume UI click (AC.6) | — | 1.4.205 pending | ⏳ operator: Resume after pane exit (argv shape re-verified above against `sessions-v1` paths) |
+| v0 picker entry (AC.2) | 2026-09-18 | 1.4.205 | ✅ delegated — operator accepted the CLI verification (launch, chips, blocked, resume) as smoke witness for v0/v1/v2; the combobox path itself was NOT exercised (Pi remains in `disabledTuiAgents`, `--agent pi` refuses while disabled) |
+| v2 Resume UI click (AC.6) | 2026-09-18 | 1.4.205 | ✅ delegated — same basis; the `pi --session` resume relaunch itself was verified live in a real Orca pane (row above), only the UI button click was not performed |
 
 Additional live findings (2026-08-18):
 
