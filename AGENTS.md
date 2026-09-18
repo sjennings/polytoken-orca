@@ -28,7 +28,7 @@ fragment, tests, and docs.
 
 - **Tests**: run all suites before committing script changes —
   `for t in bridge/test/test_*.sh; do sh "$t" || exit 1; done`
-  (71 assertions total). Failure-injection tests PATH-override `mv`/`ln`; keep
+  (79 assertions total). Failure-injection tests PATH-override `mv`/`ln`; keep
   installers calling plain `mv`/`cp`/`rm` by name so injection keeps
   working.
 - **POSIX sh, macOS-first**: scripts run under `/bin/sh` = bash 3.2. No
@@ -48,7 +48,21 @@ fragment, tests, and docs.
 
 ## Version status
 
-- v0 (launch) / v1 (status) / v2 (resume): mechanisms verified against
-  production Orca 1.4.184 on 2026-08-18 via `orca` CLI (see README
-  "Verification status"); git tags land after the operator picker-entry
-  smoke (enable Pi in Settings → Agents, then launch from the combobox).
+- v0 (launch) / v1 (status) / v2 (resume): mechanisms re-verified against
+  production Orca **1.4.205** on 2026-09-18 via `orca` CLI (see README
+  "Verification status" and `docs/orca-pi-contract.md` §7; originally
+  verified against 1.4.184 on 2026-08-18); git tags land after the
+  operator picker-entry smoke (enable Pi in Settings → Agents, then launch
+  from the combobox).
+
+## Orca 1.4.205 notes (2026-09-18)
+
+- Pi route + dialect unchanged; transport updated to mirror Orca's
+  `claude-hook.sh`: endpoint-selected `raw-json-v1` mode, form fallback,
+  `--noproxy 127.0.0.1`, spool-on-failure (79 assertions).
+- Polytoken 0.8.10 session storage is `sessions-v1/`; the hook resolves
+  `session_file` v1-first with legacy fallback.
+- The machine's live `hooks.json` also carries seven **foreign**
+  `orca-managed-polytoken-*` entries (unreleased upstream PR artifacts; their
+  `/hook/polytoken` route 404s on 1.4.205). They are unrelated entries:
+  install/uninstall must keep preserving them byte-for-byte.

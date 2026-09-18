@@ -85,19 +85,27 @@ sh bridge/install-wrapper.sh [--path-shim | --path-shim-force]
 
 ## Verification status
 
-All logic is covered by 71 shell tests runnable anywhere
-(`sh bridge/test/test_*.sh` — no Orca needed). Against **production Orca
-1.4.184** (2026-08-18, self-served via `orca` CLI in a scratch worktree):
+All logic is covered by 79 shell tests runnable anywhere
+(`sh bridge/test/test_*.sh` — no Orca needed). Most recently re-verified
+against **production Orca 1.4.205** (2026-09-18, self-served via `orca` CLI
+in a scratch worktree; earlier full verification on 1.4.184, 2026-08-18 —
+see `docs/orca-pi-contract.md` §7 for what changed between versions):
 
 | Capability | Status |
 |---|---|
-| Shim PATH resolution in Orca panes (login shell + direct exec) | ✅ verified live |
-| `pi` → `polytoken new` in a real Orca pane | ✅ verified live |
-| Chip cycle `working → done` during a real turn | ✅ verified live |
-| Chip `blocked` (+ worktree "permission") on `ask_user_question` overlay, then `done` after answering | ✅ verified live |
-| Resume: `pi --session …/log.jsonl` → `polytoken continue <id>`, same session + prior conversation | ✅ verified live |
+| Shim PATH resolution in Orca panes | ✅ verified live (1.4.184 + 1.4.205) |
+| `pi` → `polytoken new` in a real Orca pane | ✅ verified live (1.4.184 + 1.4.205) |
+| Chip cycle `working → done` during a real turn | ✅ verified live (1.4.184 + 1.4.205) |
+| Chip `blocked` on `ask_user_question` overlay | ✅ verified live (1.4.184 + 1.4.205; answering the overlay needs the GUI — terminal-sent keystrokes are ignored) |
+| Resume: `pi --session <log.jsonl>` → `polytoken continue <id>`, same session + prior conversation | ✅ verified live (1.4.184 + 1.4.205, `sessions-v1` paths) |
 | Launch from the **Pi picker entry** (AC.2) | ⏳ operator: enable Pi in Settings, click the entry |
 | Orca **Resume UI click** (vs. the recorded argv shape, already proven) | ⏳ operator |
+
+Note: Orca 1.4.205 has **no native Polytoken agent** (the `polytoken`
+hook files some tools install under `~/.orca/agent-hooks/` belong to an
+unreleased upstream PR and their `/hook/polytoken` route 404s on 1.4.205).
+The Pi masquerade remains the only working integration — details in
+`docs/orca-pi-contract.md` §7.2.
 
 ## Operator finish line (everything else is done)
 
@@ -162,5 +170,6 @@ one to use once the bridge is installed.
 
 Orca auto-updates; the hook dialect/transport may drift. Re-verify in one
 command: `sh bridge/test/test_orca_pi_hook.sh` (fixtures mirror Orca's own
-listener expectations), then check `docs/orca-pi-contract.md` §7 for the
-Orca version each smoke ran against.
+listener expectations), then check `docs/orca-pi-contract.md` §7 (drift
+notes per Orca release) and §9 (smoke log) for the Orca version each
+verification ran against.

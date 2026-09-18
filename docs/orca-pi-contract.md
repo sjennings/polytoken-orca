@@ -22,32 +22,53 @@ Provenance keys:
 
 ## 1. Transport (how a hook POST reaches Orca)
 
-From **[LOCAL-HOOK]** — the bridge copies this transport verbatim:
+From **[LOCAL-HOOK]** — the bridge mirrors this transport (re-verified against
+production Orca 1.4.205's `claude-hook.sh` on 2026-09-17):
 
-1. `source "$ORCA_AGENT_HOOK_ENDPOINT"` only when that variable is set AND
-   the file it names is readable. Orca injects this variable into pane
-   environments alongside the other `ORCA_*` vars; there is no hardcoded
-   fallback path in the lookup. (Live value of the referenced file,
-   **[LOCAL-ENV]**: contains `ORCA_AGENT_HOOK_PORT`, `ORCA_AGENT_HOOK_TOKEN`,
-   `ORCA_AGENT_HOOK_ENV=production`, `ORCA_AGENT_HOOK_VERSION=1`.)
-2. Silent no-op (`exit 0`, no request) unless **all** of
+1. `unset ORCA_AGENT_HOOK_TRANSPORT` then `source
+   "$ORCA_AGENT_HOOK_ENDPOINT"` only when that variable is set AND the file
+   it names is readable. Unsetting first means the endpoint file's
+   `ORCA_AGENT_HOOK_TRANSPORT` (if any) wins over the ambient environment.
+   (Live value of the referenced file, **[LOCAL-ENV]**, 2026-09-17: contains
+   `ORCA_AGENT_HOOK_PORT`, `ORCA_AGENT_HOOK_TOKEN`,
+   `ORCA_AGENT_HOOK_ENV=production`, `ORCA_AGENT_HOOK_VERSION=1`,
+   `ORCA_AGENT_HOOK_TRANSPORT=raw-json-v1`.)
+2. Silent no-op (`exit 0`) unless **all** of
    `ORCA_AGENT_HOOK_PORT`, `ORCA_AGENT_HOOK_TOKEN`, `ORCA_PANE_KEY` are
-   present in the environment.
+   present in the environment (on gating failure Orca's own hooks spool the
+   event instead; see step 6).
 3. POST to `http://127.0.0.1:${ORCA_AGENT_HOOK_PORT}/hook/pi`
-   (**[UPSTREAM-TEST]**: `/hook/<source>` maps to source; `pi` is confirmed).
-4. Headers: `X-Orca-Agent-Hook-Token: ${ORCA_AGENT_HOOK_TOKEN}`,
-   `Content-Type: application/x-www-form-urlencoded`.
-5. Form fields (URL-encoded):
-   - `paneKey=${ORCA_PANE_KEY}`
-   - `tabId=${ORCA_TAB_ID}`
-   - `launchToken=${ORCA_AGENT_LAUNCH_TOKEN}`
-   - `worktreeId=${ORCA_WORKTREE_ID}`
-   - `env=${ORCA_AGENT_HOOK_ENV}`
-   - `version=${ORCA_AGENT_HOOK_VERSION}`
-   - `payload@-` — the event JSON read from stdin.
-6. curl flags: `--connect-timeout 0.5 --max-time 1.5`; the hook script
+   (**[UPSTREAM-TEST]**: `/hook/<source>` maps to source; `pi` confirmed in
+   the v1.4.205 tag's `agent-hook-listener.ts` provider list and live probed
+   2026-09-17: form and raw-json POSTs to `/hook/pi` both return 204).
+4. Transport selection by `ORCA_AGENT_HOOK_TRANSPORT` (from the endpoint
+   file):
+   - `raw-json-v1` (current live value): payload POSTed verbatim as
+     `Content-Type: application/json` `--data-binary @-`, with the six
+     pane/env values base64-packed US-separator (`\037`) style into headers
+     `X-Orca-Agent-Hook-Meta-Encoding: base64` and
+     `X-Orca-Agent-Hook-Meta: <base64(paneKey \037 tabId \037 launchToken
+     \037 worktreeId \037 env \037 version)>`.
+   - anything else (or missing `base64`/`tr`): classic form POST,
+     `Content-Type: application/x-www-form-urlencoded`, fields
+     `paneKey`, `tabId`, `launchToken`, `worktreeId`, `env`, `version`,
+     `payload@-` (URL-encoded). Still accepted by the live 1.4.205 listener
+     (probed 2026-09-17, HTTP 204).
+5. curl flags: `--connect-timeout 0.5 --max-time 1.5 --noproxy 127.0.0.1`.
+   Deliberate divergence from Orca's own hook: 1.4.205's `claude-hook.sh`
+   allows the endpoint file to override `${connect_timeout}`/`${max_time}`;
+   the bridge hardcodes 0.5/1.5 so no endpoint value can ever extend a
+   hook's blocking window (AGENTS.md fail-open contract). The hook script
    **always exits 0** and never emits output (agent running outside Orca =
    silent no-op).
+6. Spool fallback (Orca 1.4.205 hooks): when delivery is impossible (gating
+   failure) or the POST fails, Orca's own hooks append the event to
+   `<endpoint dir>/spool/pane-<paneKey-tail>.jsonl` (JSONL records
+   `{"paneKey",...,"source","receivedAt","payload"}`, mode 0600 in a 0700
+   dir, 5 MiB/pane cap, 7-day age reset, tool events never spooled) for the
+   listener to drain later. The bridge mirrors this mechanism with
+   `"source":"pi"` and the translated Pi-dialect payload. Spooled payloads
+   contain prompt/tool-input text — same trust model as Orca's own hooks.
 
 The `ORCA_*` pane variables are injected into the terminal Orca launches and
 therefore inherited by Polytoken and its hook subprocesses.
@@ -70,7 +91,10 @@ Fields live inside the `payload` form field:
 
 From **[ORCA-DOCS]**: Orca resumes Pi with `pi --session <session_file>`; the
 path comes from the `session_start` payload above. If the file is missing,
-Resume is unavailable.
+Resume is unavailable. The bridge resolves `session_file` against Polytoken's
+current storage layout (see §7.3): `sessions-v1/<id>/log.jsonl` when it
+exists, legacy `sessions/<id>/log.jsonl` otherwise, defaulting to the
+`sessions-v1` layout for brand-new sessions.
 
 ## 4. Polytoken public surface
 
@@ -86,8 +110,10 @@ From **[PT-DOCS]/[PT-LOCAL]**:
 - Events: `session_start`, `pre_user_prompt`, `pre_model_turn`,
   `pre_tool_use`, `post_tool_use`, `post_tool_use_failure`, `stop`,
   `notification`, …
-- Sessions live at `~/.local/share/polytoken/sessions/<id>/log.jsonl`;
-  launch `polytoken new`; resume `polytoken continue <id>`.
+- Sessions live at `~/.local/share/polytoken/sessions-v1/<id>/log.jsonl`
+  (Polytoken 0.8.10, re-verified 2026-09-17; 0.7-era layouts used
+  `sessions/<id>/log.jsonl` and the old dir still exists); launch
+  `polytoken new`; resume `polytoken continue <id>`.
 - Tool events expose `.tool_name` and `.input` (object) on stdin.
 - Polytoken's interactive-question tool is literally named
   `ask_user_question` → maps to Orca's blocked state natively.
@@ -180,6 +206,54 @@ for v2: **resume-only** (default); the history panel's Pi listing stays
 empty for Polytoken sessions unless the stretch stub item is later proven
 trivially safe — see README known limitations.
 
+## 7. Re-verification after Orca 1.4.184 → 1.4.205 (2026-09-17/18)
+
+Re-checked after production Orca auto-updated (1.4.184, verified
+2026-08-18 → 1.4.205, released 2026-09-17). Findings:
+
+### 7.1 The Pi integration is unchanged and still supported
+
+- The v1.4.205 tag contains `agent-hook-listener-pi-compatible.test.ts`
+  (Pi dialect: `tool_call`/`tool_execution_start`, `ask_user_question` →
+  literal `blocked`, normal tools → `working`, tool end clears blocked,
+  `agent_end` → `done`, Pi `session_start` resume identity) and lists `pi`
+  in `agent-hook-listener.ts`'s provider sources. No public deprecation
+  marker.
+- Live probes (2026-09-17, running 1.4.205 listener): POSTs to `/hook/pi`
+  return **204** via BOTH the form transport and the raw-json-v1 transport
+  (with a junk pane key; auth accepted, unknown pane ignored).
+
+### 7.2 Orca 1.4.205 has NO native Polytoken agent
+
+- `/hook/polytoken` returns **404** on the live 1.4.205 listener, and the
+  installed app bundle (`app.asar`, `app.asar.unpacked`) contains zero
+  `polytoken` strings.
+- Upstream: native Polytoken support exists only as **open, unreleased
+  contributor PR #18577** (branch of `sjennings/orca`): launch
+  `polytoken new [--prompt …]`, resume `polytoken continue <id>` from the
+  `session_start` id, `/hook/polytoken` accepting raw Polytoken event JSON,
+  seven registered events (`notification` deliberately unregistered,
+  `post_model_turn` unmapped, `ask_user_question` → state `waiting`). When
+  a release ships it, the masquerade can be retired in favor of the native
+  entry — until then `/hook/pi` is the only working path.
+
+### 7.3 Machine-level findings (2026-09-17/18)
+
+- **Polytoken 0.8.10 migrated session storage** to
+  `~/.local/share/polytoken/sessions-v1/<id>/` (legacy `sessions/` still
+  holds migrated-era leftovers). The bridge now resolves `session_file`
+  v1-first (§3); reporting the stale legacy path would point Orca's
+  `providerSession.transcriptPath` at a nonexistent file.
+- The live `~/.config/polytoken/hooks.json` contains seven **foreign**
+  entries named `orca-managed-polytoken-*` (installed 2026-09-03/04,
+  originating from the unreleased PR #18577's hook scripts in
+  `~/.orca/agent-hooks/polytoken-*.sh`). They POST raw Polytoken events to
+  `/hook/polytoken`, which 404s on 1.4.205 — they are harmless (fail-open)
+  but dead weight. Our installers preserve them byte-for-byte as unrelated
+  entries; removal is an operator decision (they are not ours to touch).
+- Orca's own hook transport gained `ORCA_AGENT_HOOK_TRANSPORT` (live:
+  `raw-json-v1`), `--noproxy 127.0.0.1`, and the spool fallback (§1.6).
+
 ## 8. Security review dispositions (2026-08-18)
 
 An adversarial review pass over the wrapper/bridge/installers produced a
@@ -223,8 +297,11 @@ FIX-FIRST verdict; findings and dispositions:
 | v1 core (launch via shim + chip cycle) | 2026-08-18 | 1.4.184 | ✅ self-served via `orca` CLI, scratch worktree `bridge-smoke` (removed after): `terminal create --command 'pi'` in a login-shell pane → shim resolved → `polytoken new` (session `08x64j-crowd`); during a tool turn `worktree ps` showed `state: working` (worktree status `working`); after turn `state: done` |
 | v1 blocked state | 2026-08-18 | 1.4.184 | ✅ `ask_user_question` overlay in the live pane → `state: blocked`, worktree status `permission`; after answering (Enter on the overlay) → `state: done` |
 | v2 resume | 2026-08-18 | 1.4.184 | ✅ recorded real resume argv: `pi --session /Users/wire2k/.local/share/polytoken/sessions/08x64j-crowd/log.jsonl` → wrapper → `polytoken continue 08x64j-crowd` → same session, prior conversation (tool output + question + answer) present |
-| v0 picker entry (AC.2) | — | 1.4.184 pending | ⏳ operator: enable Pi (Settings → Agents; currently in `disabledTuiAgents`, CLI `--agent pi` refuses with "Selected agent is disabled"), launch from combobox, confirm TUI |
-| v2 Resume UI click (AC.6) | — | 1.4.184 pending | ⏳ operator: Resume after pane exit (argv shape already recorded/verified above) |
+| v1 core re-check (launch + chip cycle) | 2026-09-18 | 1.4.205 | ✅ self-served via `orca` CLI, scratch worktree `bridge-smoke-1420` (removed after): `terminal create --command 'pi'` → shim resolved (argv log `$0 = ~/.local/bin/pi`) → `polytoken new`; worktree `ps` showed the agent registered (`agentType: pi`, sent prompt recorded) and `state: done` after the turn |
+| v1 blocked state re-check | 2026-09-18 | 1.4.205 | ✅ `ask_user_question` in the pane → `state: blocked`, `toolName: ask_user_question`. (Answering the overlay from the CLI was not possible — the overlay ignores pasted/terminal-sent keystrokes; same operator-GUI behavior as before, see README known limitations) |
+| v2 resume re-check | 2026-09-18 | 1.4.205 | ✅ `pi --session …/sessions-v1/0bccpb-slug/log.jsonl` → `polytoken continue 0bccpb-slug` → same session id; prior conversation present (the resumed agent recalled the earlier exchange and the pending question) |
+| v0 picker entry (AC.2) | — | 1.4.205 pending | ⏳ operator: enable Pi (Settings → Agents; currently in `disabledTuiAgents`, CLI `--agent pi` refuses with "Selected agent is disabled"), launch from combobox, confirm TUI |
+| v2 Resume UI click (AC.6) | — | 1.4.205 pending | ⏳ operator: Resume after pane exit (argv shape re-verified above against `sessions-v1` paths) |
 
 Additional live findings (2026-08-18):
 
